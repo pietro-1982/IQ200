@@ -1,0 +1,74 @@
+<!doctype html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>IQ200 LeadFinder</title>
+<style>body{font-family:system-ui,sans-serif;margin:0;background:#f5f6f8;color:#1b1f24}header{background:#14324a;color:#fff;padding:18px 24px}h1{margin:0;font-size:22px}small{opacity:.8}
+.bar{display:flex;gap:10px;flex-wrap:wrap;padding:14px 24px;background:#fff;border-bottom:1px solid #ddd}select,input{padding:8px;border:1px solid #bbb;border-radius:6px;font-size:14px}
+#log{padding:10px 24px;font-size:13px;color:#444}.grid{display:grid;gap:12px;padding:0 24px 24px;grid-template-columns:repeat(auto-fill,minmax(340px,1fr))}
+.c{background:#fff;border:1px solid #ddd;border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:6px}.c h3{font-size:15px;margin:4px 0}.t{display:inline-block;font-size:12px;padding:2px 8px;border-radius:10px;background:#e3edf6;color:#14324a;margin-right:4px}
+.aperta{background:#dff3e3;color:#145a2a}.scaduta{background:#f6dede;color:#7a1c1c}.m{font-size:13px;color:#444;margin:2px 0}a{color:#0b5cad}
+[hidden]{display:none!important}.grid{grid-template-columns:repeat(auto-fill,minmax(min(100%,340px),1fr))}.c{min-width:0;overflow-wrap:anywhere}.bar>*{max-width:100%;box-sizing:border-box}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;padding:12px 24px;background:#fff}.tabs button{border:1px solid #b5c3cf;border-radius:6px;background:#fff;color:#14324a;padding:9px 12px;font:inherit;cursor:pointer}.tabs button[aria-pressed=true]{color:#fff;background:#14324a;border-color:#14324a}
+#scope{font-size:13px;margin:0;padding:6px 24px 15px;color:#444}#scope a{display:inline-block;margin:4px 6px 0 0}.t{margin-bottom:3px}.c h3{line-height:1.4}#count{padding:0 24px;margin:0 0 10px;font-size:13px;font-variant-numeric:tabular-nums}
+.actions{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:auto;padding-top:6px}.btn-copy{border:1px solid #b5c3cf;background:#f5f8fb;color:#14324a;border-radius:6px;padding:5px 10px;font-size:12px;cursor:pointer}.btn-copy:hover{background:#e3edf6}
+</style></head><body>
+<header><h1>IQ200 LeadFinder</h1><small>Appalti pubblici e incarichi a progetto · classificazione su 6 servizi + AI</small></header>
+<nav class="tabs" aria-label="Canale di ricerca"><button type="button" data-channel="ted" aria-pressed="true">Appalti TED</button><button type="button" data-channel="online" aria-pressed="false">Annunci online</button></nav>
+<div class="bar"><select id="s" aria-label="Servizio"></select><select id="st" aria-label="Stato avviso"><option value="aperta">Solo aperti</option><option value="">Tutti gli stati</option></select><select id="area" aria-label="Area geografica" hidden><option value="it">Solo Italia confermata</option><option value="all">Italia + remoto da verificare</option></select><input id="q" aria-label="Cerca negli annunci" placeholder="Cerca testo, ente, città, fonte"></div>
+<div id="log" role="status">Caricamento scansione…</div>
+<p id="scope" hidden>Fonti aperte: WordPress Jobs, community Reddit e Remotive. «Remoto» non conferma l’idoneità dall’Italia; controlla requisiti e scadenza sul portale. <a href="https://www.addlance.com/lavoro-freelance" target="_blank" rel="noopener noreferrer">AddLance: consultazione manuale</a></p>
+<p id="count" aria-live="polite"></p><div class="grid" id="g"></div>
+<script>
+const by=id=>document.getElementById(id), tabs=[...document.querySelectorAll('[data-channel]')];
+const services=['Odoo / ERP','CRM','Siti web','Automazioni AI','E-commerce','Marketing digitale'];
+const prefs={ted:{service:'',text:''},online:{service:'',text:''}};
+let channel='ted', itemsCache=[];
+function isSafeUrl(u){
+  try{const p=new URL(u);if(p.protocol!=='https:')return false;
+    return p.hostname==='ted.europa.eu'||p.hostname==='jobs.wordpress.net'||p.hostname.endsWith('.reddit.com')||p.hostname==='www.reddit.com'||p.hostname==='remotive.com';
+  }catch{return false}
+}
+function buildPitch(x){
+  const focus=x.servizio && x.servizio!=='IT generico (da valutare)'?`su ${x.servizio}`:'sul progetto';
+  return `Ciao, ho visto l'annuncio "${x.titolo}" (${x.fonte||'fonte online'}). Lavoriamo ${focus} per aziende e professionisti e possiamo aiutarti a definire perimetro, tempi e preventivo concreto. Se ti fa piacere, possiamo fare un confronto rapido di 10 minuti per capire le tue esigenze.`;
+}
+window.copyPitch=function(idx,btn){
+  const x=itemsCache[idx];if(!x)return;
+  navigator.clipboard?.writeText(buildPitch(x)).then(()=>{
+    const old=btn.textContent;btn.textContent='Bozza copiata';setTimeout(()=>btn.textContent=old,1600);
+  });
+};
+fetch('data.json',{cache:'no-store'}).then(r=>{if(!r.ok)throw Error();return r.json()}).then(d=>{
+  const o=d.opportunita||[], S=by('s'), st=by('st'), area=by('area'), q=by('q');
+  const e=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  function draw(){
+    const online=channel==='online', sv=S.value, query=q.value.trim().toLowerCase();
+    const f=o.filter(x=>(x.canale||'ted')===channel && (!sv||x.servizio===sv||(online&&x.altri?.includes(sv))) &&
+      (online?(area.value==='all'||x.area==='Italia confermata'):(!st.value||x.stato===st.value)) &&
+      (!query||[x.titolo,x.ente,x.citta,x.fonte,x.estratto,x.motivo].join(' ').toLowerCase().includes(query)));
+    itemsCache=f;
+    by('count').textContent=`${f.length} risultati`;
+    const ts=new Date(d.log?.eseguito);
+    const fontiSummary=(d.log?.fonti||[]).filter(x=>online?x.fonte!=='TED':x.fonte==='TED')
+      .map(x=>x.esito==='ok'?`${x.fonte}: ${x.avvisi_letti} letti (${x.classificate??'ok'})`:`${x.fonte}: ${x.dettaglio||'errore'}`).join(' · ');
+    const aiInfo=d.log?.ai?.attiva?` · AI: ${d.log.ai.riclassificati} affinati, ${d.log.ai.scartati} scartati`:'';
+    by('log').textContent='Scansione: '+(isNaN(ts)?(d.log?.eseguito||''):ts.toLocaleString('it-IT',{timeZone:'Europe/Rome'}))+' · '+(fontiSummary||'Nessuna fonte')+aiInfo;
+    by('g').innerHTML=f.length?f.map((x,i)=>`<article class="c"><div><span class="t">${e(x.servizio)}</span><span class="t ${x.stato==='aperta'?'aperta':x.stato==='scaduta'?'scaduta':''}">${e(x.area||x.stato)}</span><span class="t">Pertinenza ${e(x.punteggio)}</span></div>
+      <h3>${e(x.titolo)}</h3><div class="m"><b>${e(online?(x.ente||x.fonte):x.ente)}</b> ${e(x.citta||'')} · <i>${e(x.fonte||'')}</i></div><div class="m">${e(x.tipo||'')} · Pubblicato ${e(x.pubblicazione||'n/d')}${x.scadenza?' · Scadenza '+e(x.scadenza):''}</div>
+      <div class="m">Motivo: ${e(x.motivo||'')}</div>${x.estratto?`<div class="m">${e(x.estratto.slice(0,220))}${x.estratto.length>220?'…':''}</div>`:''}
+      <div class="actions">${isSafeUrl(x.url)?`<a href="${e(x.url)}" target="_blank" rel="noopener noreferrer">Apri annuncio originale</a>`:''}
+      <button type="button" class="btn-copy" onclick="copyPitch(${i},this)">Copia bozza risposta</button></div></article>`).join(''):
+      `<p>${online&&area.value==='it'?'Nessun progetto con località italiana confermata nei risultati filtrati. Puoi includere gli annunci remoti da verificare.':'Nessun risultato con questi filtri.'}</p>`;
+  }
+  function switchChannel(next){
+    prefs[channel]={service:S.value,text:q.value};
+    channel=next;
+    const online=channel==='online';
+    tabs.forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.channel===channel)));
+    st.hidden=online;area.hidden=!online;by('scope').hidden=!online;
+    S.replaceChildren(new Option('Tutti i servizi',''),...services.concat(online?[]:['IT generico (da valutare)']).map(v=>new Option(v,v)));
+    S.value=prefs[channel].service||'';q.value=prefs[channel].text;
+    draw();
+  }
+  tabs.forEach(b=>b.addEventListener('click',()=>switchChannel(b.dataset.channel)));
+  [S,st,area,q].forEach(x=>x.addEventListener('input',draw));
+  switchChannel(channel);
+}).catch(()=>{by('log').textContent='Errore: dati della scansione non leggibili.'});
+</script></body></html>
