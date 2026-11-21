@@ -4,16 +4,21 @@ import html
 from html.parser import HTMLParser
 import json
 import re
+import time
 import urllib.request
 from email.utils import parsedate_to_datetime
 from urllib.parse import quote, urlsplit
 import xml.etree.ElementTree as ET
 
-USER_AGENT = "IQ200-LeadFinder/2.0 (ricerca-opportunita-b2b)"
+USER_AGENT = "IQ200-LeadFinder/2.1 (ricerca-opportunita-b2b)"
 
 PATTERNS = {
-    "Odoo / ERP": r"\bodoo\b|\berp\b|\bgestionale\b|\bmagazzino\b|\bfatturazione\b",
-    "CRM": r"\bcrm\b|\bsalesforce\b|\bhubspot\b|\bgestione clienti\b|\bpipedrive\b",
+    "Odoo / ERP": (
+        r"\bodoo\b|\berp\b|\bgestionale\b|\bmagazzino\b|\bfatturazione\b|"
+        r"\bdigitalizzazion\w*\b|\bfluss[oi]\b|\bworkflow\b|\bprocess[oi]\s+aziendal\w*\b|"
+        r"\bcustom\w*\b|\bpersonalizzazion\w*\b|\bintegrazion\w*\b"
+    ),
+    "CRM": r"\bcrm\b|\bsalesforce\b|\bhubspot\b|\bgestione clienti\b|\bpipedrive\b|\bpipeline\b",
     "E-commerce": r"\bwoo\s?commerce\b|\bshopify\b|\bprestashop\b|\bmagento\b|\be[- ]?commerce\b|\bnegozio online\b",
     "Siti web": r"\bwordpress\b|\bsit[oi] web\b|\bweb\s?site\b|\bweb design\b|\bportale web\b|\blanding page\b",
     "Automazioni AI": r"\b(?:ai automation|automazion[ei]|intelligenza artificiale|chatbot|ai agent|rpa|n8n|make\.com|zapier)\b",
@@ -155,10 +160,10 @@ def fetch_wp_jobs():
 
 
 REDDIT_QUERIES = [
-    ("ItaliaStartups", "gestionale OR crm OR sito web OR ecommerce OR preventivo OR sviluppatore", True),
-    ("commercialisti", "gestionale OR fatturazione OR software OR automazione", True),
-    ("Odoo", "italy OR italia OR italiano OR freelancer OR consultant", False),
-    ("forhire", "[Hiring] (odoo OR n8n OR shopify OR wordpress OR automation)", False),
+    ("ItaliaStartups", "gestionale OR crm OR erp OR digitalizzazione OR preventivo OR sviluppatore", True),
+    ("commercialisti", "gestionale OR fatturazione OR software OR automazione OR erp", True),
+    ("Odoo", "italy OR italia OR italiano OR freelancer OR consultant OR custom", False),
+    ("forhire", "[Hiring] (odoo OR erp OR n8n OR shopify OR wordpress OR automation)", False),
 ]
 
 
@@ -166,7 +171,9 @@ def fetch_reddit():
     out = []
     read_count = 0
     cutoff = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=21)
-    for sub, query, is_ita in REDDIT_QUERIES:
+    for idx, (sub, query, is_ita) in enumerate(REDDIT_QUERIES):
+        if idx > 0:
+            time.sleep(1.5)
         url = f"https://www.reddit.com/r/{sub}/search.json?q={quote(query)}&restrict_sr=1&sort=new&t=month&limit=25"
         try:
             data = json.loads(fetch_bytes(url).decode("utf-8"))
